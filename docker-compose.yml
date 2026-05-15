@@ -1,0 +1,59 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: skillshub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: SkillHub
+    ports:
+      - "5434:5432"
+    volumes:
+      - skillshub-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d SkillHub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  embeddings:
+    build:
+      context: ./embeddings
+      dockerfile: Dockerfile
+    container_name: skillshub-embeddings
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: skillshub-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      embeddings:
+        condition: service_started
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@db:5432/SkillHub?schema=public"
+      EMBEDDINGS_URL: "http://embeddings:8000"
+      GOOGLE_API_KEY: "${GOOGLE_API_KEY}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-gemini-2.0-flash}"
+      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET}"
+      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
+    ports:
+      - "3000:3000"
+    volumes:
+      - skillshub-uploads:/app/uploads
+
+volumes:
+  skillshub-db-data:
+  skillshub-uploads:
