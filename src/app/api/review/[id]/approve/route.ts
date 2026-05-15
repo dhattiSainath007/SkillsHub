@@ -1,11 +1,9 @@
 /**
  * POST /api/review/[id]/approve
  *
- * 1. Load the PendingExtraction
- * 2. Allow optional `overrides` in the body to let HR edit before saving
- * 3. Upsert the Profile (replace skills + projects atomically)
- * 4. Regenerate the embedding from the new profile text, write via raw SQL
- * 5. Mark the extraction APPROVED
+ * Two-step approval:
+ *   PENDING            → employee (owner) approves → EMPLOYEE_APPROVED
+ *   EMPLOYEE_APPROVED  → HR approves              → APPROVED + profile created
  */
 import { NextResponse } from "next/server";
 
@@ -34,23 +32,51 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const guard = await requireAuth();
   if (guard.error) return guard.error;
   const { session } = guard;
-  console.log(`[approve] ── ${session.user.email} approving extraction ${params.id}`);
 
   const pending = await prisma.pendingExtraction.findUnique({ where: { id: params.id } });
   if (!pending) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (pending.status !== "PENDING") {
+  if (pending.status === "APPROVED" || pending.status === "REJECTED") {
     return NextResponse.json({ error: `Already ${pending.status.toLowerCase()}` }, { status: 409 });
   }
 
   const isOwner = pending.userId === session.user.id;
   const isHR = session.user.role === "HR";
-  if (!isOwner && !isHR) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  // ─── Step 1: PENDING → EMPLOYEE_APPROVED (employee only) ───
+  if (pending.status === "PENDING") {
+    if (!isOwner) {
+      return NextResponse.json(
+        { error: "Only the employee who uploaded this resume can submit it for HR review." },
+        { status: 403 },
+      );
+    }
+    await prisma.pendingExtraction.update({
+      where: { id: pending.id },
+      data: { status: "EMPLOYEE_APPROVED", reviewedAt: new Date() },
+    });
+    console.log(`[approve] step 1: ${session.user.email} submitted ${params.id} for HR review`);
+    return NextResponse.json({ status: "EMPLOYEE_APPROVED", step: 1 });
   }
 
-  // Optional override body: HR may tweak fields before approving.
+  // ─── Step 2: EMPLOYEE_APPROVED → APPROVED (HR only) ───
+  if (pending.status !== "EMPLOYEE_APPROVED") {
+    return NextResponse.json({ error: "Unexpected status" }, { status: 409 });
+  }
+  if (!isHR) {
+    return NextResponse.json(
+      { error: "Only HR can give final approval." },
+      { status: 403 },
+    );
+  }
+
+  console.log(`[approve] step 2: ${session.user.email} HR-approving ${params.id}`);
+
+  // Optional override body: HR may tweak fields before final approval.
   const body = await req.json().catch(() => null);
-  const overrides = body && typeof body === "object" ? (body as { overrides?: unknown }).overrides : undefined;
+  const overrides =
+    body && typeof body === "object"
+      ? (body as { overrides?: unknown }).overrides
+      : undefined;
 
   const candidate = overrides ?? pending.extracted;
   const parsed = ExtractedProfileSchema.safeParse(candidate);
@@ -65,12 +91,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const existing = await prisma.profile.findUnique({ where: { userId: pending.userId } });
 
   const profile = await prisma.$transaction(async (tx) => {
-    // Wipe-and-recreate skills+projects for a clean re-approval.
     if (existing) {
       await tx.skill.deleteMany({ where: { profileId: existing.id } });
       await tx.project.deleteMany({ where: { profileId: existing.id } });
     }
-
     const upserted = await tx.profile.upsert({
       where: { userId: pending.userId },
       create: {
@@ -91,7 +115,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         projects: { create: data.projects },
       },
     });
-
     await tx.pendingExtraction.update({
       where: { id: pending.id },
       data: {
@@ -100,15 +123,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         reviewedAt: new Date(),
       },
     });
-
     return upserted;
   });
   console.log(
-    `[approve] profile upserted (${data.skills.length} skills, ${data.projects.length} projects) ` +
-      `for ${profile.fullName}`,
+    `[approve] profile upserted (${data.skills.length} skills, ${data.projects.length} projects) for ${profile.fullName}`,
   );
 
-  // Generate + store embedding outside the transaction (external service call).
   let embeddingOk = false;
   try {
     const tEmbed = Date.now();
@@ -126,5 +146,5 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   console.log(`[approve] done — total ${Date.now() - t0}ms`);
-  return NextResponse.json({ profileId: profile.id, embeddingOk });
+  return NextResponse.json({ status: "APPROVED", step: 2, profileId: profile.id, embeddingOk });
 }

@@ -70,19 +70,125 @@ const SkillCategoryEnum = z.enum([
 ]);
 const ProficiencyEnum = z.enum(["NOVICE", "INTERMEDIATE", "EXPERT"]);
 
+// LLMs often return slightly-off enum values ("METHODOLOGY", "DATABASE",
+// "ADVANCED", "SENIOR"). Map them to the closest valid value rather than
+// failing the whole extraction.
+const CATEGORY_ALIASES: Record<string, z.infer<typeof SkillCategoryEnum>> = {
+  // Languages
+  LANG: "LANGUAGE",
+  PROGRAMMING_LANGUAGE: "LANGUAGE",
+  QUERY_LANGUAGE: "LANGUAGE",
+  MARKUP: "LANGUAGE",
+  MARKUP_LANGUAGE: "LANGUAGE",
+  SCRIPTING: "LANGUAGE",
+  // Frameworks / libraries
+  LIBRARY: "FRAMEWORK",
+  LIB: "FRAMEWORK",
+  SDK: "FRAMEWORK",
+  UI_LIBRARY: "FRAMEWORK",
+  FRONTEND_FRAMEWORK: "FRAMEWORK",
+  BACKEND_FRAMEWORK: "FRAMEWORK",
+  // Platforms
+  CLOUD: "PLATFORM",
+  CLOUD_PLATFORM: "PLATFORM",
+  DATABASE: "PLATFORM",
+  DB: "PLATFORM",
+  OS: "PLATFORM",
+  OPERATING_SYSTEM: "PLATFORM",
+  RUNTIME: "PLATFORM",
+  INFRASTRUCTURE: "PLATFORM",
+  SERVICE: "PLATFORM",
+  // Tools
+  IDE: "TOOL",
+  EDITOR: "TOOL",
+  CLI: "TOOL",
+  VCS: "TOOL",
+  TESTING: "TOOL",
+  CI_CD: "TOOL",
+  DEVOPS: "TOOL",
+  // Domains / methodologies / soft skills
+  METHODOLOGY: "DOMAIN",
+  CONCEPT: "DOMAIN",
+  PRACTICE: "DOMAIN",
+  PRINCIPLE: "DOMAIN",
+  PATTERN: "DOMAIN",
+  CERTIFICATION: "DOMAIN",
+  PROTOCOL: "DOMAIN",
+  STANDARD: "DOMAIN",
+  ARCHITECTURE: "DOMAIN",
+  SOFT_SKILL: "DOMAIN",
+  PROCESS: "DOMAIN",
+  INDUSTRY: "DOMAIN",
+  AREA: "DOMAIN",
+  SPECIALIZATION: "DOMAIN",
+  OTHER: "DOMAIN",
+};
+
+const PROFICIENCY_ALIASES: Record<string, z.infer<typeof ProficiencyEnum>> = {
+  BEGINNER: "NOVICE",
+  JUNIOR: "NOVICE",
+  BASIC: "NOVICE",
+  ENTRY: "NOVICE",
+  LEARNING: "NOVICE",
+  FAMILIAR: "NOVICE",
+  MID: "INTERMEDIATE",
+  MID_LEVEL: "INTERMEDIATE",
+  COMPETENT: "INTERMEDIATE",
+  PROFICIENT: "INTERMEDIATE",
+  WORKING: "INTERMEDIATE",
+  ADVANCED: "EXPERT",
+  SENIOR: "EXPERT",
+  MASTER: "EXPERT",
+  GURU: "EXPERT",
+  PRINCIPAL: "EXPERT",
+  LEAD: "EXPERT",
+};
+
+function normalizeEnum<T extends string>(
+  raw: unknown,
+  allowed: readonly T[],
+  aliases: Record<string, T>,
+  fallback: T,
+): T {
+  if (typeof raw !== "string") return fallback;
+  const upper = raw.toUpperCase().replace(/[\s-]+/g, "_").trim();
+  if ((allowed as readonly string[]).includes(upper)) return upper as T;
+  return aliases[upper] ?? fallback;
+}
+
 const ExtractedSkillSchema = z.object({
   name: z.string().min(1),
-  category: SkillCategoryEnum,
-  proficiency: ProficiencyEnum,
-  yearsExperience: z.number().min(0),
-  inferred: z.boolean().default(false),
+  category: z.preprocess(
+    (v) =>
+      normalizeEnum(
+        v,
+        ["LANGUAGE", "FRAMEWORK", "PLATFORM", "TOOL", "DOMAIN"] as const,
+        CATEGORY_ALIASES,
+        "TOOL",
+      ),
+    SkillCategoryEnum,
+  ),
+  proficiency: z.preprocess(
+    (v) =>
+      normalizeEnum(
+        v,
+        ["NOVICE", "INTERMEDIATE", "EXPERT"] as const,
+        PROFICIENCY_ALIASES,
+        "INTERMEDIATE",
+      ),
+    ProficiencyEnum,
+  ),
+  yearsExperience: z.coerce.number().min(0).default(0),
+  inferred: z.coerce.boolean().default(false),
 });
 
 const ExtractedProjectSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
-  technologies: z.array(z.string()).default([]),
-  durationMonths: z.number().int().min(0),
+  technologies: z
+    .preprocess((v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []), z.array(z.string()))
+    .default([]),
+  durationMonths: z.coerce.number().int().min(0).default(0),
 });
 
 export const ExtractedProfileSchema = z.object({

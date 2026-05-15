@@ -1,6 +1,10 @@
 /**
  * POST /api/review/[id]/reject
  * Body: { notes?: string }
+ *
+ * Allowed:
+ *   PENDING            → employee (owner) discards their own draft
+ *   EMPLOYEE_APPROVED  → HR declines the submission
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -19,14 +23,24 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const pending = await prisma.pendingExtraction.findUnique({ where: { id: params.id } });
   if (!pending) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (pending.status !== "PENDING") {
+  if (pending.status === "APPROVED" || pending.status === "REJECTED") {
     return NextResponse.json({ error: `Already ${pending.status.toLowerCase()}` }, { status: 409 });
   }
 
   const isOwner = pending.userId === session.user.id;
   const isHR = session.user.role === "HR";
-  if (!isOwner && !isHR) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  if (pending.status === "PENDING" && !isOwner) {
+    return NextResponse.json(
+      { error: "Only the uploader can discard a draft." },
+      { status: 403 },
+    );
+  }
+  if (pending.status === "EMPLOYEE_APPROVED" && !isHR) {
+    return NextResponse.json(
+      { error: "Only HR can reject a submitted extraction." },
+      { status: 403 },
+    );
   }
 
   const body = await req.json().catch(() => ({}));

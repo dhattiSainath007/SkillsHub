@@ -1,7 +1,9 @@
 /**
  * GET /api/review/queue
- * HR: all PENDING extractions across the org.
- * Employees: only their own PENDING extractions.
+ *
+ * HR sees EMPLOYEE_APPROVED extractions (employee already self-reviewed,
+ * waiting for HR final approval). Non-HR users get an empty list — they
+ * see their own PENDING drafts on /my-profile, not here.
  */
 import { NextResponse } from "next/server";
 
@@ -15,17 +17,15 @@ export async function GET() {
   if (guard.error) return guard.error;
   const { session } = guard;
 
-  const where =
-    session.user.role === "HR"
-      ? { status: "PENDING" as const }
-      : { status: "PENDING" as const, userId: session.user.id };
+  if (session.user.role !== "HR") {
+    return NextResponse.json({ items: [] });
+  }
 
   const items = await prisma.pendingExtraction.findMany({
-    where,
+    where: { status: "EMPLOYEE_APPROVED" },
     orderBy: { createdAt: "desc" },
   });
 
-  // Join in the uploader's name/email for the HR view.
   const userIds = Array.from(new Set(items.map((i) => i.userId)));
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },

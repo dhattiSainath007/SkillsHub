@@ -33,9 +33,10 @@ enum Proficiency {
 }
 
 enum ExtractionStatus {
-  PENDING
-  APPROVED
-  REJECTED
+  PENDING            // just uploaded, waiting for employee self-review
+  EMPLOYEE_APPROVED  // employee signed off, waiting for HR final approval
+  APPROVED           // HR approved → profile created, embedding live, searchable
+  REJECTED           // declined at either step
 }
 
 model User {
