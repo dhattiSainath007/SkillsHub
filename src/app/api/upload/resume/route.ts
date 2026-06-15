@@ -8,9 +8,11 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-// Import the inner lib to skip pdf-parse@1.x's package-root debug side-effect
-// (which tries to read a hardcoded test PDF and crashes when it can't find it).
-import pdf from "pdf-parse/lib/pdf-parse.js";
+// unpdf wraps a modern, maintained pdfjs build. It has no filesystem
+// side-effects and parses cleanly under the Next.js/webpack bundler, unlike
+// the ancient pdf.js bundled in pdf-parse@1.x (which threw "bad XRef entry"
+// on valid PDFs once bundled).
+import { extractText, getDocumentProxy } from "unpdf";
 
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/api-auth";
@@ -61,11 +63,12 @@ export async function POST(req: Request) {
   let text: string;
   try {
     const tParse = Date.now();
-    const result = await pdf(buffer);
+    const doc = await getDocumentProxy(new Uint8Array(buffer));
+    const result = await extractText(doc, { mergePages: true });
     text = (result.text ?? "").trim();
-    console.log(`[upload] pdf-parse: ${text.length} chars in ${Date.now() - tParse}ms`);
+    console.log(`[upload] pdf parse: ${text.length} chars in ${Date.now() - tParse}ms`);
   } catch (err) {
-    console.error(`[upload] pdf-parse FAILED:`, (err as Error).message);
+    console.error(`[upload] pdf parse FAILED:`, (err as Error).message);
     return NextResponse.json(
       { error: "Could not parse PDF", detail: (err as Error).message },
       { status: 422 },
