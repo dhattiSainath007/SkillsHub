@@ -414,7 +414,10 @@ Be honest — if no candidates are a good fit, return fewer results.`;
   const raw = stripCodeFence(await chatJson(RANK_SYSTEM, userPrompt));
   const parsed = RankedResultsSchema.parse(safeJsonParse(raw));
 
-  // Drop hallucinated profileIds defensively.
+  // Drop hallucinated profileIds defensively, then sort by score desc — the
+  // LLM is not reliable about returning items in ranked order.
   const knownIds = new Set(candidates.map((c) => c.profileId));
-  return parsed.results.filter((r) => knownIds.has(r.profileId));
+  return parsed.results
+    .filter((r) => knownIds.has(r.profileId))
+    .sort((a, b) => b.matchScore - a.matchScore);
 }
