@@ -17,6 +17,7 @@ import { prisma } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { SkillCategory } from "@prisma/client";
+import { DeleteEmployeeButton } from "./delete-employee-button";
 
 export const dynamic = "force-dynamic";
 
@@ -50,12 +51,17 @@ export default async function ProfilePage({ params }: { params: { id: string } }
   const profile = await prisma.profile.findUnique({
     where: { id: params.id },
     include: {
-      user: { select: { email: true, name: true } },
+      user: { select: { id: true, email: true, name: true, role: true } },
       skills: { orderBy: [{ category: "asc" }, { yearsExperience: "desc" }] },
       projects: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!profile) notFound();
+
+  const canDelete =
+    session.user.role === "HR" &&
+    profile.user.role === "EMPLOYEE" &&
+    profile.user.id !== session.user.id;
 
   const grouped = profile.skills.reduce<Record<SkillCategory, typeof profile.skills>>(
     (acc, s) => {
@@ -67,13 +73,21 @@ export default async function ProfilePage({ params }: { params: { id: string } }
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <Link
-        href="/directory"
-        className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to directory
-      </Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          href="/directory"
+          className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to directory
+        </Link>
+        {canDelete && (
+          <DeleteEmployeeButton
+            userId={profile.user.id}
+            fullName={profile.fullName}
+          />
+        )}
+      </div>
 
       {/* Hero card */}
       <Card className="border-slate-200/70 overflow-hidden">

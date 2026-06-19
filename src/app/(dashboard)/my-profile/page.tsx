@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MyProfileClient } from "./my-profile-client";
+import type { ExtractedProfile } from "@/components/extraction-card";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +24,17 @@ export default async function MyProfilePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [profile, pending] = await Promise.all([
+  const [profile, pending, submitted] = await Promise.all([
     prisma.profile.findUnique({
       where: { userId: session.user.id },
       include: { skills: { take: 10, orderBy: { yearsExperience: "desc" } } },
     }),
     prisma.pendingExtraction.findMany({
       where: { userId: session.user.id, status: "PENDING" },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.pendingExtraction.findFirst({
+      where: { userId: session.user.id, status: "EMPLOYEE_APPROVED" },
       orderBy: { createdAt: "desc" },
     }),
   ]);
@@ -39,6 +44,12 @@ export default async function MyProfilePage() {
     createdAt: p.createdAt.toISOString(),
     extracted: p.extracted,
   }));
+
+  // If HR hasn't approved yet but the employee has submitted, show the submitted
+  // resume content as the profile. Display is identical regardless of HR status.
+  const submittedProfile = submitted
+    ? (submitted.extracted as unknown as ExtractedProfile)
+    : null;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -102,6 +113,47 @@ export default async function MyProfilePage() {
                   <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                 </Button>
               </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ) : submittedProfile ? (
+        <Card className="border-slate-200/70 overflow-hidden">
+          <div className="gradient-aurora p-5 border-b border-slate-200/70">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white font-semibold shadow-sm shrink-0">
+                {initials(submittedProfile.fullName)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-semibold text-slate-900">{submittedProfile.fullName}</h2>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-1">
+                  {submittedProfile.location && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-3 w-3" /> {submittedProfile.location}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <Briefcase className="h-3 w-3" /> {submittedProfile.yearsExperience} years
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <CardContent className="p-5">
+            {submittedProfile.summary && (
+              <p className="text-sm text-slate-700 leading-relaxed">{submittedProfile.summary}</p>
+            )}
+            <div className="flex flex-wrap gap-1.5 mt-4">
+              {submittedProfile.skills.map((s, i) => (
+                <Badge
+                  key={i}
+                  variant="outline"
+                  className="font-normal bg-slate-50 border-slate-200"
+                >
+                  {s.name}
+                </Badge>
+              ))}
             </div>
           </CardContent>
         </Card>

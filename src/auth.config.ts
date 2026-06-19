@@ -5,7 +5,7 @@
  */
 import type { NextAuthConfig } from "next-auth";
 
-const HR_ONLY_PREFIXES = ["/search", "/review", "/directory"];
+const HR_ONLY_PREFIXES = ["/search", "/review", "/directory", "/employees"];
 const PUBLIC_PREFIXES = ["/login", "/api/auth"];
 
 export default {

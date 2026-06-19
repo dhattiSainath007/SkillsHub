@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Users, Inbox, UserCircle2 } from "lucide-react";
+import { Search, Users, Inbox, UserCircle2, UserPlus } from "lucide-react";
 import type { Role } from "@prisma/client";
 import { cn } from "@/lib/utils";
 
@@ -18,11 +18,11 @@ const HR_LINKS: NavItem[] = [
   { href: "/search", label: "Search", icon: Search },
   { href: "/directory", label: "Directory", icon: Users },
   { href: "/review", label: "Review", icon: Inbox, badgeKey: "review" },
+  { href: "/employees/new", label: "Add Employee", icon: UserPlus },
 ];
 
 const EMPLOYEE_LINKS: NavItem[] = [
   { href: "/my-profile", label: "My Profile", icon: UserCircle2 },
-  { href: "/directory", label: "Directory", icon: Users },
 ];
 
 export function NavLinks({

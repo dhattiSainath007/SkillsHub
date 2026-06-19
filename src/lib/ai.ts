@@ -279,13 +279,39 @@ Return ONLY valid JSON matching this exact schema:
 }
 
 RULES:
-- Only include skills clearly evidenced in the resume.
+- EXHAUSTIVE EXTRACTION: Extract EVERY skill that appears in any "Technical Skills",
+  "Skills", "Tools", "Tech Stack", or similar section. Do NOT summarize, merge, or
+  silently drop items. Every comma-separated item is its own skill. If the section
+  lists 12 items, the output MUST contain at least 12 corresponding skills.
+- Before finalising, re-read each comma-separated skill line in the resume and
+  confirm every item appears in your skills array. If a parenthetical short name
+  is given (e.g. "Large Language Model Orchestration (LangChain)"), that counts
+  as ONE skill — emit the short name. Items separated only by commas are SEPARATE
+  skills, never merge them.
+- ALSO extract technologies mentioned in project descriptions and the experience section.
+- CANONICAL NAMES: Resumes often spell out acronyms. Always use the SHORT, common
+  industry name as the skill "name", not the verbose phrase:
+    • "Structured Query Language"                        → "SQL"
+    • "Amazon Simple Storage Service"                    → "Amazon S3"
+    • "Representational State Transfer" / "REST APIs"    → "REST"
+    • "Application Programming Interface" / "APIs"       → "REST API" or "API"
+    • "Django Representational State Transfer Framework" → "Django REST Framework"
+    • "Large Language Model Orchestration (LangChain)"   → "LangChain"
+    • "Vector Databases (Chroma Database)"               → "ChromaDB" (and also add a "Vector Databases" skill)
+    • "Convolutional Neural Networks"                    → "CNN"
+    • "Retrieval-Augmented Generation" / "RAG Pipelines" → "RAG"
+    • "Generative Artificial Intelligence"               → "Generative AI"
+    • "Prompt Engineering"                               → "Prompt Engineering"
+    • "Term Frequency–Inverse Document Frequency"        → "TF-IDF"
+  General rule: if a skill is written as "Verbose Phrase (CommonName)" or
+  "CommonName (Verbose Phrase)", use the CommonName as the skill name.
 - Proficiency: NOVICE (<2 yrs), INTERMEDIATE (2-5 yrs), EXPERT (5+ yrs).
+  If years are unclear, use INTERMEDIATE.
 - INFERENCE BONUS: If someone has Next.js, also add React (inferred: true).
   If they have TypeScript, also add JavaScript (inferred: true).
   If they have Spring Boot, also add Java (inferred: true).
   If they have Django/Flask, also add Python (inferred: true).
-- Be generous with inferred skills — this is a feature.`;
+- Be generous — when in doubt, INCLUDE the skill rather than skip it.`;
 
 export async function extractResumeData(pdfText: string): Promise<ExtractedProfile> {
   const attempt = async (extra = ""): Promise<ExtractedProfile> => {
